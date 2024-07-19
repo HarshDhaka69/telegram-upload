@@ -1,17 +1,13 @@
 import datetime
 import math
 import os
-
-
 import mimetypes
 from io import FileIO, SEEK_SET
 from typing import Union, TYPE_CHECKING
-
 import click
 from hachoir.metadata.metadata import RootMetadata
 from hachoir.metadata.video import MP4Metadata
 from telethon.tl.types import DocumentAttributeVideo, DocumentAttributeFilename
-
 from telegram_upload.caption_formatter import CaptionFormatter, FilePath
 from telegram_upload.exceptions import TelegramInvalidFile, ThumbError
 from telegram_upload.utils import scantree, truncate
@@ -19,10 +15,8 @@ from telegram_upload.video import get_video_thumb, video_metadata
 
 mimetypes.init()
 
-
 if TYPE_CHECKING:
     from telegram_upload.client import TelegramManagerClient
-
 
 def is_valid_file(file, error_logger=None):
     error_message = None
@@ -34,17 +28,14 @@ def is_valid_file(file, error_logger=None):
         error_logger(error_message)
     return error_message is None
 
-
 def get_file_mime(file):
     return (mimetypes.guess_type(file)[0] or ('')).split('/')[0]
-
 
 def metadata_has(metadata: RootMetadata, key: str):
     try:
         return metadata.has(key)
     except ValueError:
         return False
-
 
 def get_file_attributes(file):
     attrs = []
@@ -54,7 +45,6 @@ def get_file_attributes(file):
         video_meta = metadata
         meta_groups = None
         if hasattr(metadata, '_MultipleMetadata__groups'):
-            # Is mkv
             meta_groups = metadata._MultipleMetadata__groups
         if metadata is not None and not metadata.has('width') and meta_groups:
             video_meta = meta_groups[next(filter(lambda x: x.startswith('video'), meta_groups._key_list))]
@@ -69,11 +59,9 @@ def get_file_attributes(file):
             ))
     return attrs
 
-
 def get_file_thumb(file):
     if get_file_mime(file) == 'video':
         return get_video_thumb(file)
-
 
 class UploadFilesBase:
     def __init__(self, client: 'TelegramManagerClient', files, thumbnail: Union[str, bool, None] = None,
@@ -97,9 +85,7 @@ class UploadFilesBase:
             self._iterator = self.get_iterator()
         return next(self._iterator)
 
-
 class RecursiveFiles(UploadFilesBase):
-
     def get_iterator(self):
         for file in self.files:
             if os.path.isdir(file):
@@ -108,7 +94,6 @@ class RecursiveFiles(UploadFilesBase):
             else:
                 yield file
 
-
 class NoDirectoriesFiles(UploadFilesBase):
     def get_iterator(self):
         for file in self.files:
@@ -116,7 +101,6 @@ class NoDirectoriesFiles(UploadFilesBase):
                 raise TelegramInvalidFile('"{}" is a directory.'.format(file))
             else:
                 yield file
-
 
 class LargeFilesBase(UploadFilesBase):
     def get_iterator(self):
@@ -132,11 +116,9 @@ class LargeFilesBase(UploadFilesBase):
     def process_large_file(self, file):
         raise NotImplementedError
 
-
 class NoLargeFiles(LargeFilesBase):
     def process_large_file(self, file):
         raise TelegramInvalidFile('"{}" file is too large for Telegram.'.format(file))
-
 
 class File(FileIO):
     force_file = False
@@ -201,7 +183,6 @@ class File(FileIO):
         else:
             return get_file_attributes(self.path)
 
-
 class SplitFile(File, FileIO):
     force_file = True
 
@@ -216,30 +197,19 @@ class SplitFile(File, FileIO):
             size = self.remaining_size
         if not self.remaining_size:
             return b''
-        size = min(self.remaining_size, size)
-        self.remaining_size -= size
-        return super().read(size)
+        else:
+            data = super().read(size)
+            self.remaining_size -= len(data)
+            return data
 
-    def readall(self) -> bytes:
-        return self.read()
-
-    @property
-    def file_name(self):
-        return self._name
-
-    @property
-    def file_size(self):
-        return self.max_read_size
-
-    def seek(self, offset: int, whence: int = SEEK_SET, split_seek: bool = False) -> int:
-        if not split_seek:
-            self.remaining_size += self.tell() - offset
+    def seek(self, offset: int, whence: int = SEEK_SET, split_seek: bool = False):
+        if split_seek:
+            return
         return super().seek(offset, whence)
-
+    
     @property
-    def short_name(self):
-        return self.file_name.split('/')[-1]
-
+    def name(self):
+        return self._name
 
 class SplitFiles(LargeFilesBase):
     def process_large_file(self, file):
@@ -252,3 +222,21 @@ class SplitFiles(LargeFilesBase):
             splitted_file = SplitFile(self.client, file, size, '{}.{}'.format(file_name, str(part).zfill(zfill)))
             splitted_file.seek(self.client.max_file_size * part, split_seek=True)
             yield splitted_file
+
+def collect_all_files(directory):
+    all_files = []
+    for root, _, files in os.walk(directory):
+        for file in files:
+            all_files.append(os.path.join(root, file))
+    return all_files
+
+def upload_files(client, directory, thumbnail=None, force_file=False, caption=None):
+    all_files = collect_all_files(directory)
+    
+    # Choose the appropriate class based on the requirement
+    files_to_upload = NoDirectoriesFiles(client, all_files, thumbnail=thumbnail, force_file=force_file, caption=caption)
+    
+    for file in files_to_upload:
+        # Implement your upload logic here, for example:
+        print(f"Uploading: {file}")
+        # Example: client.upload_file(file, thumbnail=thumbnail, caption=caption)
