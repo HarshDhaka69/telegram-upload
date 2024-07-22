@@ -251,7 +251,7 @@ def main():
     args = parser.parse_args()
     
     # Initialize your TelegramManagerClient instance
-    client = MockClient()  # Replace this with your actual TelegramManagerClient instance
+    client = 'TelegramManagerClient'  # Replace this with your actual TelegramManagerClient instance
 
     # Call the upload_files function
     upload_files(client, args.directory, thumbnail=args.thumbnail, force_file=args.force_file, caption=args.caption)
