@@ -13,7 +13,8 @@ from telegram_upload.utils import aislice
 
 _T = TypeVar("_T")
 
-PAGE_SIZE = 10
+# Set PAGE_SIZE to 100
+PAGE_SIZE = 100
 
 
 async def async_handler(handler, event):
@@ -34,14 +35,11 @@ class IterableDialogList(_DialogList):
 
     async def _init(self, values: Sequence[Tuple[_T, AnyFormattedText]]) -> None:
         started_values = await aislice(values, PAGE_SIZE)
-
-        # started_values = await aislice(values, PAGE_SIZE)
         if not started_values:
             raise IndexError('Values is empty.')
         self.values = started_values
-        # current_values will be used in multiple_selection,
-        # current_value will be used otherwise.
-        self.current_values: List[_T] = []
+        # Initialize the current values list with all values selected if many is True
+        self.current_values: List[_T] = [val[0] for val in started_values] if self.many else []
         self.current_value: _T = started_values[0][0]
         self._selected_index = 0
 
@@ -110,9 +108,12 @@ class IterableDialogList(_DialogList):
         )
 
 
-
 class IterableCheckboxList(IterableDialogList, CheckboxList):
     many = True
+
+    async def _init(self, values: Sequence[Tuple[_T, AnyFormattedText]]) -> None:
+        await super()._init(values)
+        self.current_values = [val[0] for val in self.values]  # Auto-select all items
 
 
 class IterableRadioList(IterableDialogList, RadioList):
@@ -127,7 +128,6 @@ async def show_cli_widget(widget):
 
 
 async def show_checkboxlist(iterator, not_items_error='No items were found. Exiting...'):
-    # iterator = map(lambda x: (x, f'{x.text} by {x.chat.first_name}'), iterator)
     try:
         checkbox_list = IterableCheckboxList(iterator)
         await checkbox_list._init(iterator)
